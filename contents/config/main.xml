@@ -106,6 +106,10 @@
       <default></default>
     </entry>
     <!-- Text size in percent (Ctrl + mouse wheel in the popup), separately for the commit list and the diff view -->
+    <entry name="showGraph" type="Bool">
+      <label>Show the branch graph next to the commits of one repository</label>
+      <default>true</default>
+    </entry>
     <entry name="listTextScale" type="Int">
       <default>100</default>
       <min>50</min>

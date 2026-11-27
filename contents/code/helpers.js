@@ -843,7 +843,9 @@ function parseOutput(stdout, stderr, exitCode) {
                 author: p[3],
                 subject: p[4],
                 when: p[5],
-                ts: parseInt(p[6], 10) || 0
+                ts: parseInt(p[6], 10) || 0,
+                // the hashes of the parent commits (for the graph); empty in output of older versions
+                parents: p[7] ? p[7].split(" ").filter(function(x) { return x !== ""; }) : []
             });
         } else {
             var k = line.indexOf("=");
@@ -957,4 +959,131 @@ function splitBranchOutput(stdout) {
     }
     out[cur] = (out[cur] || "") + buf.join("\n");
     return out;
+}
+
+// ------------------------------------------------------------- the branch graph
+
+// Lays out the commit graph of one repository, like "git log --graph": entries (the rows of the list, with
+// hash, parents and ts) are put in topological order (a commit always below its children, otherwise newest
+// first), and every entry gets entry.g = { col, color, merge, segs }:
+//   col: the lane (column) of its dot; color: the color number of that lane; merge: it has several parents;
+//   segs: the lines of its row, [x1, y1, x2, y2, color] with x in lanes and y from 0 (top of the row) over
+//         0.5 (the dot) to 1 (bottom).
+// Parents that are not in the list (older than the downloaded commits) end the lane at the dot.
+// Returns { rows: the entries in their new order, cols: the most lanes of a row }.
+function graphLayout(entries) {
+    var byHash = {};
+    var i, j;
+    for (i = 0; i < entries.length; ++i) {
+        byHash[entries[i].hash] = entries[i];
+    }
+    // Topological order: Kahn's algorithm, always taking the newest commit whose children are all placed.
+    var children = {};
+    for (i = 0; i < entries.length; ++i) {
+        var ps = entries[i].parents || [];
+        for (j = 0; j < ps.length; ++j) {
+            if (byHash[ps[j]]) {
+                children[ps[j]] = (children[ps[j]] || 0) + 1;
+            }
+        }
+    }
+    var ready = entries.filter(function(e) { return !children[e.hash]; });
+    var rows = [];
+    var placed = {};
+    while (ready.length > 0) {
+        var best = 0;
+        for (i = 1; i < ready.length; ++i) {
+            if (ready[i].ts > ready[best].ts) {
+                best = i;
+            }
+        }
+        var e = ready.splice(best, 1)[0];
+        if (placed[e.hash]) {
+            continue;
+        }
+        placed[e.hash] = true;
+        rows.push(e);
+        var eps = e.parents || [];
+        for (j = 0; j < eps.length; ++j) {
+            var p = byHash[eps[j]];
+            if (p && --children[p.hash] === 0) {
+                ready.push(p);
+            }
+        }
+    }
+    for (i = 0; i < entries.length; ++i) {       // a cycle cannot happen in git, but stay safe
+        if (!placed[entries[i].hash]) {
+            rows.push(entries[i]);
+        }
+    }
+
+    // The lanes: lanes[k] = { hash: the commit the lane leads to, color } or null (free).
+    var lanes = [];
+    var nextColor = 0;
+    var maxCols = 1;
+    var freeLane = function(from) {
+        for (var k = from; k < lanes.length; ++k) {
+            if (!lanes[k]) {
+                return k;
+            }
+        }
+        return lanes.length;
+    };
+    var laneOf = function(hash) {
+        for (var k = 0; k < lanes.length; ++k) {
+            if (lanes[k] && lanes[k].hash === hash) {
+                return k;
+            }
+        }
+        return -1;
+    };
+    for (i = 0; i < rows.length; ++i) {
+        var r = rows[i];
+        var before = lanes.slice();
+        var segs = [];
+        var col = laneOf(r.hash);
+        var color;
+        if (col < 0) {                          // the newest commit of a branch: a new lane starts here
+            col = freeLane(0);
+            color = nextColor++;
+        } else {
+            color = lanes[col].color;
+        }
+        // Upper half: the lanes leading to this commit join at its dot, the others go on.
+        for (j = 0; j < before.length; ++j) {
+            if (before[j]) {
+                segs.push(before[j].hash === r.hash ? [j, 0, col, 0.5, before[j].color] : [j, 0, j, 0.5, before[j].color]);
+                if (before[j].hash === r.hash) {
+                    lanes[j] = null;
+                }
+            }
+        }
+        // Lower half: the first parent goes on in this lane (or joins the lane that leads to it already),
+        // every further parent (a merge) in a lane of its own.
+        var known = (r.parents || []).filter(function(h) { return !!byHash[h]; });
+        for (j = 0; j < known.length; ++j) {
+            var at = laneOf(known[j]);
+            if (at >= 0) {
+                segs.push([col, 0.5, at, 1, lanes[at].color]);
+            } else if (j === 0) {
+                lanes[col] = { hash: known[0], color: color };
+                segs.push([col, 0.5, col, 1, color]);
+            } else {
+                var nl = freeLane(col + 1);
+                lanes[nl] = { hash: known[j], color: nextColor++ };
+                segs.push([col, 0.5, nl, 1, lanes[nl].color]);
+            }
+        }
+        for (j = 0; j < lanes.length; ++j) {    // the other lanes go on straight
+            if (j !== col && lanes[j] && lanes[j] === before[j]) {
+                segs.push([j, 0.5, j, 1, lanes[j].color]);
+            }
+        }
+        while (lanes.length > 0 && !lanes[lanes.length - 1]) {
+            lanes.pop();
+        }
+        maxCols = Math.max(maxCols, before.length, lanes.length, col + 1);
+        r.g = { col: col, color: color, merge: (r.parents || []).length > 1, segs: segs };
+    }
+    return { rows: rows, cols: maxCols };
 }
