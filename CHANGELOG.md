@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.9] - 2026-11-27
+
 ### Added
 
 - Branch graph in the commit list: while the list shows one repository, colored lanes on its left show how
@@ -15,6 +17,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   their lane on their newest commit. The main lane has the color of the repository. New commits get a halo
   around their dot. The graph is hidden while searching and with several repositories in the list, and it
   can be switched off on the "Behavior" settings page ("Show the branch graph").
+
+### Changed
+
+- The check also reads the parents of each commit (needed for the graph); the graph appears after the first
+  check with the new version.
+- README: a screenshot of the branch graph, and a shorter screenshot of the commit list.
 
 ## [1.8] - 2026-11-19
 
@@ -297,7 +305,8 @@ First public release.
   Local File…*), and `scripts/package.sh` to build it from the source.
 - Documentation: `README.md`, `SECURITY.md`, this changelog and issue templates.
 
-[Unreleased]: https://github.com/vit-lab/plasma-git-watcher/compare/v1.8...HEAD
+[Unreleased]: https://github.com/vit-lab/plasma-git-watcher/compare/v1.9...HEAD
+[1.9]: https://github.com/vit-lab/plasma-git-watcher/compare/v1.8...v1.9
 [1.8]: https://github.com/vit-lab/plasma-git-watcher/compare/v1.7...v1.8
 [1.7]: https://github.com/vit-lab/plasma-git-watcher/compare/v1.6.1...v1.7
 [1.6.1]: https://github.com/vit-lab/plasma-git-watcher/compare/v1.6...v1.6.1
