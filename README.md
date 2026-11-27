@@ -44,6 +44,8 @@ The context menu of the widget:
   the list, and the choice is remembered. With many repositories, the branch rows fold into one line.
   An unticked repository or branch is switched off: it is not checked and sends no notifications until it is
   ticked again.
+- A branch graph next to the commits of one repository: colored lanes, dots and merge rings, curves where
+  branches split and join, and the branch names on their newest commits.
 - Search (the magnifier button or Ctrl+F) by message, author or hash, in the downloaded commits or with "All
   history" in every commit of the shown branches, and an "Advanced" row with an author filter.
 - Small downloads: a repository watched by URL is kept as one small copy shared by all its branches, with only
@@ -211,6 +213,11 @@ Passphrases and tokens are never stored by the widget. Only the paths of the key
   the line shows "All branches". The line scrolls sideways (also with the mouse wheel) when the chosen
   branches do not fit. The numbers count unread commits.
 - The choice of repositories and branches is remembered.
+- While the list shows one repository, the branch graph on its left shows how the commits are connected:
+  each branch has a lane of its own color (the main one in the color of the repository), a merge has a ring
+  instead of a dot, and the names of the watched branches are shown on their newest commits. New commits
+  have a halo around their dot. The graph is hidden while searching, and it can be switched off with "Show
+  the branch graph" in the Behavior settings.
 - The magnifier button in the header (or Ctrl+F) opens a search field. Type words from the commit message or
   the author name, or the beginning of a hash (4 or more characters): the list keeps the commits that match
   all of them. Escape closes the search; closing the popup does not, so the search is still there when the

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Branch graph in the commit list: while the list shows one repository, colored lanes on its left show how
+  the commits and branches are connected, like `git log --graph`. Commits are in graph order (a commit
+  always below the commits that build on it), a merge has a ring instead of a dot, lines curve where a
+  branch splits off or is merged, and the names of the watched branches are shown as chips in the color of
+  their lane on their newest commit. The main lane has the color of the repository. New commits get a halo
+  around their dot. The graph is hidden while searching and with several repositories in the list, and it
+  can be switched off on the "Behavior" settings page ("Show the branch graph").
+
 ## [1.8] - 2026-11-19
 
 ### Added

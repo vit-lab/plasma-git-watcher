@@ -23,7 +23,7 @@
 # while it runs, so that "stop" can end it together with its git, ssh and timeout processes.
 #
 # Output: KEY=VALUE lines (STATUS, TIP, URL, MSG) followed by one line per commit:
-#   C<US>hash<US>short<US>author<US>subject<US>relative-date<US>unix-time
+#   C<US>hash<US>short<US>author<US>subject<US>relative-date<US>unix-time<US>parents (space-separated)
 #
 # A remote URL gets a cache repository of its own (see cache_dir_of in auth.sh), shared by all its
 # branches. It is shallow (the last commits only) and blobless: only commits and folder listings are
@@ -400,4 +400,4 @@ HASH=$(git -C "$DIR" rev-parse --verify --quiet "${TIPREF}^{commit}") \
     || fail "Branch not found: ${TIPREF#refs/remotes/origin/}"
 
 printf 'STATUS=ok\nTIP=%s\nURL=%s\n' "$HASH" "$URL"
-git -C "$DIR" log -n "$LIMIT" --format="C${US}%H${US}%h${US}%an${US}%s${US}%cr${US}%ct" "$HASH"
+git -C "$DIR" log -n "$LIMIT" --format="C${US}%H${US}%h${US}%an${US}%s${US}%cr${US}%ct${US}%P" "$HASH"

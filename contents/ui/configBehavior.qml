@@ -10,6 +10,7 @@ KCM.SimpleKCM {
     property alias cfg_showBadge: badgeCheck.checked
     property alias cfg_hideWhenRead: hideCheck.checked
     property alias cfg_markReadOnOpen: markCheck.checked
+    property alias cfg_showGraph: graphCheck.checked
     property alias cfg_iconSize: sizeCombo.currentIndex
     property alias cfg_iconIdle: idleIcon.iconName
     property alias cfg_iconNew: newIcon.iconName
@@ -18,6 +19,7 @@ KCM.SimpleKCM {
     property bool cfg_showBadgeDefault
     property bool cfg_hideWhenReadDefault
     property bool cfg_markReadOnOpenDefault
+    property bool cfg_showGraphDefault
     property int cfg_iconSizeDefault
     property string cfg_iconIdleDefault
     property string cfg_iconNewDefault
@@ -39,6 +41,20 @@ KCM.SimpleKCM {
             id: markCheck
             Kirigami.FormData.label: i18n("Unread state:")
             text: i18n("Mark as read when the popup opens")
+        }
+
+        QQC2.CheckBox {
+            id: graphCheck
+            Kirigami.FormData.label: i18n("Commit list:")
+            text: i18n("Show the branch graph")
+        }
+        QQC2.Label {
+            Layout.fillWidth: true
+            Layout.maximumWidth: Kirigami.Units.gridUnit * 25
+            wrapMode: Text.Wrap
+            font: Kirigami.Theme.smallFont
+            opacity: 0.7
+            text: i18n("While the list shows one repository: colored lanes on the left show how the commits and branches are connected, with a ring for a merge and the branch names on their newest commits. Hidden while searching.")
         }
 
         Kirigami.Separator {

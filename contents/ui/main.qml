@@ -45,6 +45,24 @@ PlasmoidItem {
     property string branchGroupsSig: ""  // {id, name, color, branches: [{id, text}]}
     property int viewRepoCount: 0        // repositories and branch entries in the list right now
     property int viewUnitCount: 0
+    // The branch graph on the left of the commit list (one repository in the list, no search):
+    // graphCols = the most lanes side by side (0 = no graph), graphBase = the color number of the
+    // repository, so that its main lane has the color of its name.
+    property int graphCols: 0
+    property int graphBase: 0
+    readonly property bool graphShown: graphCols > 0 && !searching
+    readonly property int graphLanes: Math.min(graphCols, 8)            // more lanes are cut off
+    readonly property real laneWidth: Math.round(Kirigami.Units.gridUnit * 0.75 * cfg.listTextScale / 100)
+    readonly property var graphColors: {
+        var bg = Kirigami.Theme.backgroundColor;
+        var a = [];
+        for (var i = 0; i < 8; ++i) {
+            a.push(Helpers.repoColor(graphBase + i, bg.r, bg.g, bg.b));
+        }
+        return a;
+    }
+    readonly property bool showGraphSetting: cfg.showGraph
+    onShowGraphSettingChanged: bumpNow()
     property var displayCommits: []
     property var problems: []
     property string displaySig: ""       // what displayCommits shows; the list is replaced only when it changes
@@ -1223,7 +1241,8 @@ PlasmoidItem {
                 var entry = {
                     repoId: id, repoName: nameOf(id), hash: c.hash, short: c.short, author: c.author,
                     subject: c.subject, when: c.when, ts: c.ts, unread: i < hl, branches: [u ? u.branch : ""], branchLabel: u ? u.branch : "",
-                    parentId: u ? u.parentId : id, repoBase: u ? u.baseName : nameOf(id), multi: !!(u && u.multi)
+                    parentId: u ? u.parentId : id, repoBase: u ? u.baseName : nameOf(id), multi: !!(u && u.multi),
+                    parents: c.parents || [], tips: []
                 };
                 if (ids.length > 1 && u && u.multi) {
                     merged[u.parentId + "|" + c.hash] = entry;
@@ -1237,6 +1256,30 @@ PlasmoidItem {
         if (ids.length > 1) {
             out.sort(function(a, b) { return b.ts - a.ts; });
         }
+        // One repository: the commits in graph order, with the lanes, and the branch names on their newest commits.
+        var gCols = 0;
+        var gBase = 0;
+        if (cfg.showGraph && nParents === 1 && out.length > 0) {
+            var lay = Helpers.graphLayout(out);
+            out = lay.rows;
+            gCols = lay.cols;
+            var tipAt = {};
+            for (var t = 0; t < out.length; ++t) {
+                tipAt[out[t].hash] = out[t];
+            }
+            for (var b = 0; b < ids.length; ++b) {
+                var bu = repoById(ids[b]);
+                var te = tipAt[st(ids[b]).tip];
+                if (bu && te) {
+                    te.tips.push(bu.branch);
+                }
+            }
+            for (var pi = 0; pi < parsedRepos.length; ++pi) {
+                if (parsedRepos[pi].id === out[0].parentId) {
+                    gBase = pi;
+                }
+            }
+        }
         for (var pid2 in discoverState) {
             var ds = discoverState[pid2];
             var pr = parsedRepos.filter(function(x) { return x.id === pid2 && x.enabled; })[0];
@@ -1249,11 +1292,14 @@ PlasmoidItem {
         var parts = [];
         for (var n = 0; n < out.length; ++n) {
             var e = out[n];
-            parts.push(e.repoId + "\t" + e.hash + "\t" + (e.unread ? 1 : 0) + "\t" + e.repoName + "\t" + e.branchLabel + "\t" + e.when);
+            parts.push(e.repoId + "\t" + e.hash + "\t" + (e.unread ? 1 : 0) + "\t" + e.repoName + "\t" + e.branchLabel + "\t" + e.when
+                       + "\t" + e.tips.join(","));
         }
-        var dsig = nParents + "/" + ids.length + "\n" + parts.join("\n");
+        var dsig = nParents + "/" + ids.length + "/" + gCols + "/" + gBase + "\n" + parts.join("\n");
         if (dsig !== displaySig || out.length !== displayCommits.length) {
             displaySig = dsig;
+            graphCols = gCols;
+            graphBase = gBase;
             displayCommits = out;
         }
         var psig = JSON.stringify(probs);
@@ -3225,12 +3271,99 @@ PlasmoidItem {
                             PlasmaComponents.ToolTip.visible: rowMouse.containsMouse
                             PlasmaComponents.ToolTip.delay: Kirigami.Units.toolTipDelay
 
+                            // The branch graph: the lanes of this row, its dot (a ring for a merge) and the
+                            // lines to the rows above and below. The rows touch, so the lines go on through the list.
+                            Canvas {
+                                id: graphCanvas
+                                readonly property var g: row.modelData.g || null
+                                readonly property real dotY: Kirigami.Units.smallSpacing + subjectMetrics.height / 2
+                                visible: root.graphShown && g !== null
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                anchors.leftMargin: Kirigami.Units.smallSpacing
+                                width: visible ? root.graphLanes * root.laneWidth : 0
+
+                                onGChanged: requestPaint()
+                                onWidthChanged: requestPaint()
+                                onHeightChanged: requestPaint()
+                                onDotYChanged: requestPaint()
+                                onVisibleChanged: requestPaint()
+                                Connections {
+                                    target: root
+                                    function onGraphColorsChanged() {
+                                        graphCanvas.requestPaint();
+                                    }
+                                }
+
+                                onPaint: {
+                                    var ctx = getContext("2d");
+                                    ctx.reset();
+                                    if (!visible || !g) {
+                                        return;
+                                    }
+                                    var w = root.laneWidth;
+                                    var colors = root.graphColors;
+                                    var h = height;
+                                    var dy = dotY;
+                                    var xOf = function(c) { return (c + 0.5) * w; };
+                                    var yOf = function(y) { return y <= 0 ? 0 : (y >= 1 ? h : dy); };
+                                    ctx.lineWidth = Math.max(1.5, w / 7);
+                                    ctx.lineCap = "round";
+                                    for (var i = 0; i < g.segs.length; ++i) {
+                                        var sg = g.segs[i];
+                                        var x1 = xOf(sg[0]), y1 = yOf(sg[1]), x2 = xOf(sg[2]), y2 = yOf(sg[3]);
+                                        ctx.strokeStyle = colors[sg[4] % colors.length];
+                                        ctx.beginPath();
+                                        ctx.moveTo(x1, y1);
+                                        if (sg[0] === sg[2]) {
+                                            ctx.lineTo(x2, y2);
+                                        } else {
+                                            var ym = (y1 + y2) / 2;
+                                            ctx.bezierCurveTo(x1, ym, x2, ym, x2, y2);
+                                        }
+                                        ctx.stroke();
+                                    }
+                                    var cx = xOf(g.col);
+                                    var r = Math.max(3, w * 0.3);
+                                    if (row.modelData.unread) {
+                                        // A new commit: a halo in the highlight color (instead of the unread dot).
+                                        ctx.beginPath();
+                                        ctx.arc(cx, dy, r + ctx.lineWidth * 1.5, 0, Math.PI * 2);
+                                        ctx.fillStyle = Kirigami.Theme.highlightColor;
+                                        ctx.fill();
+                                    }
+                                    ctx.beginPath();
+                                    ctx.arc(cx, dy, r, 0, Math.PI * 2);
+                                    if (g.merge) {
+                                        // A ring, with the row's own background inside.
+                                        ctx.globalCompositeOperation = "destination-out";
+                                        ctx.fillStyle = "black";
+                                        ctx.fill();
+                                        ctx.globalCompositeOperation = "source-over";
+                                        ctx.beginPath();
+                                        ctx.arc(cx, dy, r - ctx.lineWidth / 2, 0, Math.PI * 2);
+                                        ctx.strokeStyle = colors[g.color % colors.length];
+                                        ctx.stroke();
+                                    } else {
+                                        ctx.fillStyle = colors[g.color % colors.length];
+                                        ctx.fill();
+                                    }
+                                }
+                            }
+
+                            FontMetrics {
+                                id: subjectMetrics
+                                font: subjectLabel.font
+                            }
+
                             RowLayout {
                                 id: rowLayout
-                                anchors.left: parent.left
+                                anchors.left: graphCanvas.right
                                 anchors.right: parent.right
                                 anchors.top: parent.top
                                 anchors.margins: Kirigami.Units.smallSpacing
+                                anchors.leftMargin: graphCanvas.visible ? Kirigami.Units.smallSpacing : 0
                                 spacing: Kirigami.Units.smallSpacing
 
                                 Rectangle {
@@ -3241,6 +3374,7 @@ PlasmoidItem {
                                     radius: width / 2
                                     color: Kirigami.Theme.highlightColor
                                     opacity: row.modelData.unread ? 1 : 0
+                                    visible: !graphCanvas.visible          // the graph marks new commits itself
                                 }
 
                                 ColumnLayout {
@@ -3248,6 +3382,7 @@ PlasmoidItem {
                                     spacing: 0
 
                                     PlasmaComponents.Label {
+                                        id: subjectLabel
                                         Layout.fillWidth: true
                                         textFormat: Text.StyledText
                                         text: Helpers.subjectHtml(row.modelData.subject, root.rowColors.author)
@@ -3257,15 +3392,52 @@ PlasmoidItem {
                                         font.pointSize: root.fontPt(Kirigami.Theme.defaultFont) * cfg.listTextScale / 100
                                         font.weight: row.modelData.unread ? Font.Bold : Font.Normal
                                     }
-                                    PlasmaComponents.Label {
+                                    RowLayout {
                                         Layout.fillWidth: true
-                                        elide: Text.ElideRight
-                                        textFormat: Text.StyledText
-                                        font.family: Kirigami.Theme.smallFont.family
-                                        font.pointSize: root.fontPt(Kirigami.Theme.smallFont) * cfg.listTextScale / 100
-                                        text: Helpers.metaHtml(row.modelData,
-                                                               root.rowPrefix(row.modelData),
-                                                               root.rowColors)
+                                        spacing: Kirigami.Units.smallSpacing
+
+                                        // The names of the branches whose newest commit this is, in the color of its lane.
+                                        Repeater {
+                                            model: graphCanvas.visible ? (row.modelData.tips || []) : []
+                                            delegate: Rectangle {
+                                                id: chip
+                                                required property var modelData
+                                                readonly property color laneColor: root.graphColors[graphCanvas.g.color % root.graphColors.length]
+                                                Layout.alignment: Qt.AlignVCenter
+                                                Layout.maximumWidth: Kirigami.Units.gridUnit * 10
+                                                implicitWidth: chipLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
+                                                implicitHeight: chipLabel.implicitHeight
+                                                radius: height / 2
+                                                color: Qt.alpha(laneColor, 0.15)
+                                                border.width: 1
+                                                border.color: Qt.alpha(laneColor, 0.7)
+
+                                                PlasmaComponents.Label {
+                                                    id: chipLabel
+                                                    anchors.fill: parent
+                                                    anchors.leftMargin: Kirigami.Units.smallSpacing
+                                                    anchors.rightMargin: Kirigami.Units.smallSpacing
+                                                    verticalAlignment: Text.AlignVCenter
+                                                    elide: Text.ElideMiddle
+                                                    text: chip.modelData
+                                                    color: chip.laneColor
+                                                    font.bold: true
+                                                    font.family: Kirigami.Theme.smallFont.family
+                                                    font.pointSize: root.fontPt(Kirigami.Theme.smallFont) * cfg.listTextScale / 100
+                                                }
+                                            }
+                                        }
+
+                                        PlasmaComponents.Label {
+                                            Layout.fillWidth: true
+                                            elide: Text.ElideRight
+                                            textFormat: Text.StyledText
+                                            font.family: Kirigami.Theme.smallFont.family
+                                            font.pointSize: root.fontPt(Kirigami.Theme.smallFont) * cfg.listTextScale / 100
+                                            text: Helpers.metaHtml(row.modelData,
+                                                                   root.rowPrefix(row.modelData),
+                                                                   root.rowColors)
+                                        }
                                     }
                                 }
                             }
