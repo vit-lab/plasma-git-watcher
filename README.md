@@ -12,6 +12,11 @@ The commit list of two repositories, one of them watched on all of its branches:
 
 ![The commit list of two repositories](docs/screenshots/commit_list.png)
 
+The branch graph of one repository watched on two branches: colored lanes, a ring for each merge, and the
+branch names on their newest commits:
+
+![The branch graph of one repository](docs/screenshots/branch_graph.png)
+
 The diff view of a commit, with colored section bars, per-file statistics and "Open File" buttons:
 
 ![The diff view of a commit](docs/screenshots/diff.png)
